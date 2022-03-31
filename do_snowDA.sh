@@ -14,6 +14,8 @@
 # check that slmsk is always taken from the forecast file (oro files has a different definition)
 # make sure documentation is updated.
 
+# user directories
+
 File_setting=$1
 ############################
 # read in DA settings for the experiment
@@ -38,6 +40,9 @@ do
         ;;
         "do_DA")
         do_DA=${value}
+        ;;
+        "DAtype")
+        DAtype=${value}
         ;;
         "ASSIM_IMS")
         ASSIM_IMS=${value}
@@ -103,7 +108,8 @@ JEDI_YAML=${JEDI_YAML}"_C96.yaml" # IMS and GHCN
 
 echo "JEDI YAML is: "$JEDI_YAML
 
-if [[ ! -e ${DADIR}/jedi/fv3-jedi/yaml_files/$JEDI_YAML ]]; then
+if [[ ! -e ${SCRIPTDIR}/jedi/fv3-jedi/yaml_files/$JEDI_YAML ]]; then
+     echo ${SCRIPTDIR}/jedi/fv3-jedi/yaml_files/$JEDI_YAML
      echo "YAML does not exist, exiting"
      exit
 fi
@@ -131,25 +137,10 @@ SAVE_TILE="NO" # "YES" to save background in tile space
 
 THISDATE=${THISDATE:-"2015090118"}
 
-############################################################################################
-if [[ $JEDI_YAML == *"letkfoi"* ]]; then  
-    ens_list=(mem_pos mem_neg)
-else
-    if [ $ensemble_size -gt 1 ]; then
-        declare -a ens_list=( $(for (( i=1; i<=${ensemble_size}; i++ )); do echo 0; done) ) # empty array
-        ensemble_count=0
-        for i in ${ens_list[@]}
-        do
-            ens_list[ensemble_count]="mem_`printf %02i $((ensemble_count + 1))`"
-            ensemble_count=$((ensemble_count+1))
-        done
-    fi
-fi
+echo 'THISDATE in land DA, '$THISDATE
 
 ############################################################################################
 # SHOULD NOT HAVE TO CHANGE ANYTHING BELOW HERE
-
-echo 'THISDATE in land DA, '$THISDATE
 
 cd $WORKDIR 
 
@@ -184,45 +175,19 @@ ln -s ${OUTDIR} ${WORKDIR}/output
 fi 
 
 if  [[ $SAVE_TILE == "YES" ]]; then
-    for (( ensemble_count=0; ensemble_count<ensemble_size; ensemble_count++ ))
-    do
-        if [[ $JEDI_YAML == *"letkf_"* ]]; then  
-            ens_member=${ens_list[$ensemble_count]}
-            ENSEMBLE_DIR=${WORKDIR}/${ens_member}
-            restart_back_id=.${ens_member}_back
-        else
-            ENSEMBLE_DIR=${WORKDIR}
-            restart_back_id='_back'
-        fi
-        RSTRDIR=$ENSEMBLE_DIR/restarts/tile
-        for tile in 1 2 3 4 5 6
-        do
-            source_restart=${RSTRDIR}/${FILEDATE}.sfc_data.tile${tile}.nc
-            target_restart=${OUTDIR}/restarts/${FILEDATE}.sfc_data${restart_back_id}.tile${tile}.nc
-            cp ${source_restart} ${target_restart}
-        done
-    done
-fi
+for tile in 1 2 3 4 5 6 
+do
+cp ${RSTRDIR}/${FILEDATE}.sfc_data.tile${tile}.nc  ${OUTDIR}/restarts/${FILEDATE}.sfc_data_back.tile${tile}.nc
+done
+fi 
 
 #stage restarts for applying JEDI update (files will get directly updated)
-for (( ensemble_count=0; ensemble_count<ensemble_size; ensemble_count++ ))
+for tile in 1 2 3 4 5 6 
 do
-    if [[ $JEDI_YAML == *"letkf_"* ]]; then  
-        ens_member=${ens_list[$ensemble_count]}
-        ENSEMBLE_DIR=${WORKDIR}/${ens_member}
-    else
-        ENSEMBLE_DIR=${WORKDIR}
-    fi
-    RSTRDIR=$ENSEMBLE_DIR/restarts/tile
-    for tile in 1 2 3 4 5 6
-    do
-        source_restart=${RSTRDIR}/${FILEDATE}.sfc_data.tile${tile}.nc
-        target_restart=${ENSEMBLE_DIR}/${FILEDATE}.sfc_data.tile${tile}.nc
-        echo "Trace 05 restart file in "${SCRIPT}": "${target_restart}" is linked from "${source_restart}
-        $ln -s ${source_restart} ${target_restart}
-    done
-    $ln -s ${RSTRDIR}/${FILEDATE}.coupler.res ${ENSEMBLE_DIR}/${FILEDATE}.coupler.res
+  ln -s ${RSTRDIR}/${FILEDATE}.sfc_data.tile${tile}.nc ${WORKDIR}/${FILEDATE}.sfc_data.tile${tile}.nc
 done
+ln -s ${RSTRDIR}/${FILEDATE}.coupler.res ${WORKDIR}/${FILEDATE}.coupler.res 
+
 
 ################################################
 # PREPARE OBS FILES
@@ -290,29 +255,20 @@ fi
 # CREATE PSEUDO-ENSEMBLE
 ################################################
 
-for (( ensemble_count=0; ensemble_count<ensemble_size; ensemble_count++ ))
-do
-    if [[ $JEDI_YAML == *"letkf_"* ]]; then  
-        ens_member=${ens_list[$ensemble_count]}
-        ENSEMBLE_DIR=${WORKDIR}/${ens_member}
-    else
-        ENSEMBLE_DIR=${WORKDIR}
-    fi
-    RSTRDIR=$ENSEMBLE_DIR/restarts/tile
+if [[ $do_DA == "LETKF-OI" ]]; then 
 
-    cp -r ${RSTRDIR} $ENSEMBLE_DIR
-done
+    cp -r ${RSTRDIR} $WORKDIR/mem_pos
+    cp -r ${RSTRDIR} $WORKDIR/mem_neg
 
-echo 'snowDA: calling create ensemble' 
+    echo 'snowDA: calling create ensemble' 
 
-if [[ $JEDI_YAML == *"letkfoi_"* ]]; then  
     python ${SCRIPTDIR}/letkf_create_ens.py $FILEDATE $B
-else
-fi
-if [[ $? != 0 ]]; then
-    echo "letkf create failed"
-    exit 10
-fi
+    if [[ $? != 0 ]]; then
+        echo "letkf-oi create failed"
+        exit 10
+    fi
+
+fi 
 
 ################################################
 # RUN LETKF
@@ -323,26 +279,6 @@ module load intelpython/2021.3.0
 
 # prepare namelist
 cp ${SCRIPTDIR}/jedi/fv3-jedi/yaml_files/$JEDI_YAML ${WORKDIR}/letkf_snow.yaml
-if [[ $JEDI_YAML == *"letkf_"* ]]; then  
-    key_word="USER_ENSEMBLE_MEMBER"
-    for (( ensemble_count=0; ensemble_count<ensemble_size; ensemble_count++ ))
-    do
-        ens_numbers=$((ensemble_count+1))
-        ens_member=${ens_list[$ensemble_count]}
-        target_word="- datetime: XXYYYY-XXMM-XXDDTXXHH:00:00Z\n"
-        target_word=${target_word}"     filetype: fms restart\n"
-        target_word=${target_word}"     state variables: [snwdph,vtype,slmsk]\n"
-        target_word=${target_word}"     datapath: ${ens_member}\/\n"
-        target_word=${target_word}"     filename_sfcd: XXYYYYXXMMXXDD.XXHH0000.sfc_data.nc\n"
-        if [ $ens_numbers -lt $ensemble_size ]; then
-          target_word=${target_word}"     filename_cplr: XXYYYYXXMMXXDD.XXHH0000.coupler.res\n"
-          target_word=${target_word}"   ${key_word}"
-        else
-          target_word=${target_word}"     filename_cplr: XXYYYYXXMMXXDD.XXHH0000.coupler.res"
-        fi
-        sed -i -e "s/${key_word}/${target_word}/g" letkf_snow.yaml
-    done
-fi
 
 sed -i -e "s/XXYYYY/${YYYY}/g" letkf_snow.yaml
 sed -i -e "s/XXMM/${MM}/g" letkf_snow.yaml
@@ -359,9 +295,9 @@ ln -s $JEDI_STATICDIR Data
 echo 'snowDA: calling fv3-jedi' 
 
 # C48 and C96
-if [[ $do_DA == "hofx" ]]; then  # h(x) only
+if [[ $do_DA == "hofx" ]]; then
 srun -n $NPROC_DA ${JEDI_EXECDIR}/fv3jedi_hofx_nomodel.x letkf_snow.yaml ${LOGDIR}/jedi_letkf.log
-else
+else  # LETKF-OI or LETKF
 srun -n $NPROC_DA ${JEDI_EXECDIR}/fv3jedi_letkf.x letkf_snow.yaml ${LOGDIR}/jedi_letkf.log
 fi 
 
@@ -369,7 +305,7 @@ fi
 # APPLY INCREMENT TO UFS RESTARTS 
 ################################################
 
-if [[ $do_DA == "LETKF-OI" || $do_DA == "LETKF" ]]; then  # do DA
+if [[ ! $do_DA == "hofx" ]]; then 
 
 cat << EOF > apply_incr_nml
 &noahmp_snow
@@ -392,25 +328,11 @@ fi
 ################################################
 
 if  [[ $SAVE_TILE == "YES" ]]; then
-    for (( ensemble_count=0; ensemble_count<ensemble_size; ensemble_count++ ))
-    do
-        if [[ $JEDI_YAML == *"letkf_"* ]]; then  
-            ens_member=${ens_list[$ensemble_count]}
-            ENSEMBLE_DIR=${WORKDIR}/${ens_member}
-            restart_anal_id=.${ens_member}_anal
-        else
-            ENSEMBLE_DIR=${WORKDIR}
-            restart_anal_id='_anal'
-        fi
-        RSTRDIR=$ENSEMBLE_DIR/restarts/tile
-        for tile in 1 2 3 4 5 6
-        do
-            target_restart=${OUTDIR}/restarts/${FILEDATE}.sfc_data${restart_anal_id}.tile${tile}.nc
-            source_restart=${RSTRDIR}/${FILEDATE}.sfc_data.tile${tile}.nc
-            cp ${source_restart} ${target_restart}
-        done
-    done
-fi
+for tile in 1 2 3 4 5 6 
+do
+cp ${RSTRDIR}/${FILEDATE}.sfc_data.tile${tile}.nc  ${OUTDIR}/restarts/${FILEDATE}.sfc_data_anal.tile${tile}.nc
+done
+fi 
 
 # keep IMS IODA file
 if [ $SAVE_IMS == "YES"  ] && [ $ASSIM_IMS == "YES"  ]; then
@@ -418,6 +340,6 @@ if [ $SAVE_IMS == "YES"  ] && [ $ASSIM_IMS == "YES"  ]; then
 fi 
 
 # keep increments
-if [ $SAVE_INCR == "YES" ] && [[ $do_DA == "LETKF-OI" || $do_DA == "LETKF" ]]; then
+if [ $SAVE_INCR == "YES" ] && [ ! $do_DA == "hofx" ]]; then
         cp ${WORKDIR}/${FILEDATE}.xainc.sfc_data.tile*.nc  ${OUTDIR}/DA/jedi_incr/
 fi 
