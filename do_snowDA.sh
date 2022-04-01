@@ -16,103 +16,24 @@
 
 # user directories
 
-File_setting=$1
-############################
-# read in DA settings for the experiment
-while read line
-do
-    [[ -z "$line" ]] && continue
-    [[ $line =~ ^#.* ]] && continue
-    key=$(echo ${line} | cut -d'=' -f 1)
-    value=$(echo ${line} | cut -d'=' -f 2)
-    case ${key} in
-        "CYCLEDIR")
-        CYCLEDIR=${value}
-        ;;
-        "EXPDIR")
-        EXPDIR=${value}
-        ;;
-        "exp_name")
-        exp_name=${value}
-        ;;
-        "ensemble_size")
-        ensemble_size=${value}
-        ;;
-        "do_DA")
-        do_DA=${value}
-        ;;
-        "DAtype")
-        DAtype=${value}
-        ;;
-        "ASSIM_IMS")
-        ASSIM_IMS=${value}
-        ;;
-        "ASSIM_GHCN")
-        ASSIM_GHCN=${value}
-        ;;
-        "ASSIM_SYNTH")
-        ASSIM_SYNTH=${value}
-        ;;
-        "WORKDIR")
-        WORKDIR=${value}
-        ;;
-        "DIFF_CYCLEDIR")
-        DIFF_CYCLEDIR=${value}
-        ;;
-        "OBSDIR")
-        OBSDIR=${value}
-        ;;
-        "JEDI_EXECDIR")
-        JEDI_EXECDIR=${value}
-        ;;
-        "IODA_BUILD_DIR")
-        IODA_BUILD_DIR=${value}
-        ;;
-        #default case
-        #*)
-        #echo ${line}
-        #;;
-    esac
-done < "$File_setting"
-
-# user directories
-if [[ -z "$CYCLEDIR" ]]; then
-    CYCLEDIR=$(pwd)  # this directory
-fi
-if [[ ! -z "$DIFF_CYCLEDIR" ]]; then
-    CYCLEDIR=${DIFF_CYCLEDIR}  # overwrite if DIFF_CYCLEDIR is set
-fi
-if [[ -z "$EXPDIR" ]]; then
-    EXPDIR=$(pwd)  # this directory
-fi
-
-SCRIPTDIR=${CYCLEDIR}/landDA_workflow/
-OUTDIR=${EXPDIR}/${exp_name}/output/
+WORKDIR=${WORKDIR:-"/scratch2/BMC/gsienkf/Clara.Draper/workdir/"}
+SCRIPTDIR=${DADIR:-"/scratch2/BMC/gsienkf/Clara.Draper/gerrit-hera/AZworkflow/landDA_workflow/"}
+OBSDIR=/scratch2/BMC/gsienkf/Clara.Draper/data_AZ/
+OUTDIR=${OUTDIR:-${SCRIPTDIR}/../output/} 
 LOGDIR=${OUTDIR}/DA/logs/
+#RSTRDIR=/scratch2/BMC/gsienkf/Clara.Draper/DA_test_cases/20191215_C48/ #C48
+#RSTRDIR=/scratch2/BMC/gsienkf/Clara.Draper/jedi/create_ens/mem_base/  #C768 
+#RSTRDIR=/scratch2/BMC/gsienkf/Clara.Draper/data_RnR/example_restarts/ # C96 Noah-MP
 RSTRDIR=$WORKDIR/restarts/tile # is running offline cycling will be here
 
-# create the jedi yaml name 
-
-# construct yaml name
-if [ $do_DA == "hofx" ]; then
-     JEDI_YAML=${DAtype}"_offline_hofx"
-else
-     JEDI_YAML=${DAtype}"_offline_DA"
-fi
-
-if [ $ASSIM_IMS == "YES" ]; then JEDI_YAML=${JEDI_YAML}"_IMS" ; fi
-if [ $ASSIM_GHCN == "YES" ]; then JEDI_YAML=${JEDI_YAML}"_GHCN" ; fi
-if [ $ASSIM_SYNTH == "YES" ]; then JEDI_YAML=${JEDI_YAML}"_SYNTH"; fi
-
-JEDI_YAML=${JEDI_YAML}"_C96.yaml" # IMS and GHCN
-
-echo "JEDI YAML is: "$JEDI_YAML
-
-if [[ ! -e ${SCRIPTDIR}/jedi/fv3-jedi/yaml_files/$JEDI_YAML ]]; then
-     echo ${SCRIPTDIR}/jedi/fv3-jedi/yaml_files/$JEDI_YAML
-     echo "YAML does not exist, exiting"
-     exit
-fi
+# DA options (select "YES" to assimilate)
+ASSIM_IMS=${ASSIM_IMS:-"YES"}
+ASSIM_GHCN=${ASSIM_GHCN:-"YES"} 
+ASSIM_GTS=${ASSIM_GTS:-"NO"}
+ASSIM_SYNTH=${ASSIM_SYNTH:-"NO"}
+do_DA=${do_DA:-"LETKF-OI"} # no will calculate hofx only
+JEDI_YAML=${JEDI_YAML:-"letkf_snow_offline_IMS_GHCN_C96.yaml"} # IMS and GHCN
+echo $JEDI_YAML
 
 # executable directories
 
@@ -121,7 +42,12 @@ INCR_EXECDIR=${SCRIPTDIR}/AddJediIncr/exec/
 
 # JEDI FV3 Bundle directories
 
+JEDI_EXECDIR=/scratch2/BMC/gsienkf/Clara.Draper/jedi/build/bin/
 JEDI_STATICDIR=${SCRIPTDIR}/jedi/fv3-jedi/Data/
+
+# JEDI IODA-converter bundle directories
+
+IODA_BUILD_DIR=/scratch2/BMC/gsienkf/Clara.Draper/jedi/src/ioda-bundle/build/
 
 # EXPERIMENT SETTINGS
 
@@ -154,17 +80,17 @@ module list
 INCDATE=${SCRIPTDIR}/incdate.sh
 
 # substringing to get yr, mon, day, hr info
-YYYY=`echo $THISDATE | cut -c1-4`
-MM=`echo $THISDATE | cut -c5-6`
-DD=`echo $THISDATE | cut -c7-8`
-HH=`echo $THISDATE | cut -c9-10`
+export YYYY=`echo $THISDATE | cut -c1-4`
+export MM=`echo $THISDATE | cut -c5-6`
+export DD=`echo $THISDATE | cut -c7-8`
+export HH=`echo $THISDATE | cut -c9-10`
 
 PREVDATE=`${INCDATE} $THISDATE -6`
 
-YYYP=`echo $PREVDATE | cut -c1-4`
-MP=`echo $PREVDATE | cut -c5-6`
-DP=`echo $PREVDATE | cut -c7-8`
-HP=`echo $PREVDATE | cut -c9-10`
+export YYYP=`echo $PREVDATE | cut -c1-4`
+export MP=`echo $PREVDATE | cut -c5-6`
+export DP=`echo $PREVDATE | cut -c7-8`
+export HP=`echo $PREVDATE | cut -c9-10`
 
 FILEDATE=${YYYY}${MM}${DD}.${HH}0000
 
@@ -206,6 +132,11 @@ echo $PATH
 export PATH=$PATH:${PATH_BACKUP}
 echo "FIXED" 
 echo $PATH
+
+# stage GTS
+if [[ $ASSIM_GTS == "YES" ]]; then
+ln -s $OBSDIR/GTS/data_proc/${YYYY}${MM}/adpsfc_snow_${YYYY}${MM}${DD}${HH}.nc4  gts_${YYYY}${MM}${DD}${HH}.nc
+fi 
 
 # stage GHCN
 if [[ $ASSIM_GHCN == "YES" ]]; then
@@ -264,7 +195,7 @@ if [[ $do_DA == "LETKF-OI" ]]; then
 
     python ${SCRIPTDIR}/letkf_create_ens.py $FILEDATE $B
     if [[ $? != 0 ]]; then
-        echo "letkf-oi create failed"
+        echo "letkf create failed"
         exit 10
     fi
 
@@ -295,9 +226,9 @@ ln -s $JEDI_STATICDIR Data
 echo 'snowDA: calling fv3-jedi' 
 
 # C48 and C96
-if [[ $do_DA == "hofx" ]]; then
+if [[ $do_DA == "hofx" ]]; then # h(x) only
 srun -n $NPROC_DA ${JEDI_EXECDIR}/fv3jedi_hofx_nomodel.x letkf_snow.yaml ${LOGDIR}/jedi_letkf.log
-else  # LETKF-OI or LETKF
+else
 srun -n $NPROC_DA ${JEDI_EXECDIR}/fv3jedi_letkf.x letkf_snow.yaml ${LOGDIR}/jedi_letkf.log
 fi 
 
@@ -340,6 +271,6 @@ if [ $SAVE_IMS == "YES"  ] && [ $ASSIM_IMS == "YES"  ]; then
 fi 
 
 # keep increments
-if [ $SAVE_INCR == "YES" ] && [ ! $do_DA == "hofx" ]]; then
+if [ $SAVE_INCR == "YES" ] && [ ! $do_DA == "hofx" ]; then
         cp ${WORKDIR}/${FILEDATE}.xainc.sfc_data.tile*.nc  ${OUTDIR}/DA/jedi_incr/
 fi 
