@@ -85,7 +85,7 @@ export MM=`echo $THISDATE | cut -c5-6`
 export DD=`echo $THISDATE | cut -c7-8`
 export HH=`echo $THISDATE | cut -c9-10`
 
-PREVDATE=`${INCDATE} $THISDATE -6`
+PREVDATE=`${INCDATE} $THISDATE -3`
 
 export YYYP=`echo $PREVDATE | cut -c1-4`
 export MP=`echo $PREVDATE | cut -c5-6`
@@ -135,7 +135,7 @@ echo $PATH
 
 # stage GTS
 if [[ $ASSIM_GTS == "YES" ]]; then
-ln -s $OBSDIR/GTS/data_proc/${YYYY}${MM}/adpsfc_snow_${YYYY}${MM}${DD}${HH}.nc4  gts_${YYYY}${MM}${DD}${HH}.nc
+ln -s $OBSDIR/GTS/data_proc2/${YYYY}${MM}/adpsfc_snow_${YYYY}${MM}${DD}${HH}.nc4  gts_${YYYY}${MM}${DD}${HH}.nc
 fi 
 
 # stage GHCN

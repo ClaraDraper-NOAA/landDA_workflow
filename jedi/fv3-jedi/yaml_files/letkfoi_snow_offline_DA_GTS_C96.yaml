@@ -9,6 +9,7 @@ geometry:
   fieldsets:
     - fieldset: Data/fieldsets/land.yaml
     - fieldset: Data/fieldsets/oro_data.yaml
+    - fieldset: Data/fieldsets/ufo.yaml
 # use Mike's offline files.
   orography:
     datetime: XXYYYP-XXMP-XXDPTXXHP:00:00Z
@@ -122,6 +123,13 @@ observations:
     - name: totalSnowDepth_background_error@BkgError
       type: float
       value: 30.0
+
+  - filter: Perform Action
+    filter variables:
+    - name: totalSnowDepth
+    action:
+      name: assign error
+      error parameter: 40.0
 
 driver:
   save posterior mean: false
